@@ -55,6 +55,9 @@
 
 #define PLL2_L_VAL_ADDR  (MSM_CLK_CTL_BASE + 0x33c)
 
+#define VOLTAGE_MIN 700U
+#define VOLTAGE_MAX 1500U
+
 struct clock_state {
 	struct clkctl_acpu_speed	*current_speed;
 	struct mutex			lock;
@@ -82,24 +85,33 @@ static struct clock_state drv_state = { 0 };
 static struct cpufreq_frequency_table freq_table[] = {
 	{ 0, 245760 },
 	{ 1, 368640 },
-	{ 2, 768000 },
+        { 2, 460800 },
+        { 3, 614400 },
+	{ 4, 768000 },
 #if defined(CONFIG_MACH_SPADE) || defined(CONFIG_MACH_GLACIER)
-	{ 3, 1017600 },
-	{ 4, 1209600 },
-	{ 5, 1420800 },
-	{ 6, 1632000 },
-	{ 7, 1728000 },
-	{ 8, 1824000 },
-	{ 9, CPUFREQ_TABLE_END },
+	{ 5, 1017600 },
+	{ 6, 1209600 },
+	{ 7, 1420800 },
+	{ 8, 1632000 },
+	{ 9, 1728000 },
+	{ 10, 1824000 },
+        { 11, 1920000 },
+	{ 12, CPUFREQ_TABLE_END },
 #else
-	{ 3, 806400 },
-	{ 4, 1017600 },
-	{ 5, 1209600 },
-	{ 6, 1420800 },
-	{ 7, 1632000 },
-	{ 8, 1728000 },
-	{ 9, 1824000 },
-	{ 10, CPUFREQ_TABLE_END },
+	{ 5, 806400 },
+	{ 6, 902400 },
+	{ 7, 998400 },
+	{ 8, 1017600 },
+	{ 9, 1113600 },
+	{ 10, 1209600 },
+	{ 11, 1305600 },
+	{ 12, 1420800 },
+	{ 13, 1516800 },
+	{ 14, 1632000 },
+	{ 15, 1728000 },
+	{ 16, 1824000 },
+        { 17, 1920000 },
+	{ 18, CPUFREQ_TABLE_END },
 
 #endif
 };
@@ -115,18 +127,26 @@ static struct clkctl_acpu_speed acpu_freq_tbl[] = {
 	{ MAX_AXI_KHZ, SRC_AXI, 1, 0, 61440, 900, VDD_RAW(900) },
 	{ 245760, PLL_3,    5, 2,  61440,  900, VDD_RAW(900) },
 	{ 368640, PLL_3,    5, 1,  122800, 900, VDD_RAW(900) },
+        { 460800, PLL_1,    2, 0,  153600, 950, VDD_RAW(950) },
+        { 614400, PLL_1,    2, 0,  153600, 1000, VDD_RAW(1000) },
 	{ 768000, PLL_1,    2, 0,  153600, 1050, VDD_RAW(1050) },
 #if defined(CONFIG_MACH_SPADE) || defined(CONFIG_MACH_GLACIER)
 	{ 1017600, PLL_2,   3, 0,  192000, 1100, VDD_RAW(1100) },
 #else
-	{ 806400, PLL_2,    3, 0,  192000, 1100, VDD_RAW(1100) },
-	{ 1017600, PLL_2,   3, 0,  192000, 1200, VDD_RAW(1200) },
+	{ 806400, PLL_2,    3, 0,  192000, 1100, VDD_RAW(1050) },
+	{ 902400, PLL_2,    3, 0,  192000, 1100, VDD_RAW(1100) },
+	{ 998400, PLL_2,    3, 0,  192000, 1100, VDD_RAW(1100) },
+	{ 1017600, PLL_2,   3, 0,  192000, 1200, VDD_RAW(1150) },
 #endif
+        { 1113600, PLL_2,   3, 0,  192000, 1200, VDD_RAW(1200) },
 	{ 1209600, PLL_2,   3, 0,  192000, 1200, VDD_RAW(1200) },
+	{ 1305600, PLL_2,   3, 0,  192000, 1250, VDD_RAW(1250) }, 
 	{ 1420800, PLL_2,   3, 0,  192000, 1300, VDD_RAW(1300) },
+	{ 1516800, PLL_2,   3, 0,  192000, 1300, VDD_RAW(1300) },
 	{ 1632000, PLL_2,   3, 0,  192000, 1400, VDD_RAW(1400) },
 	{ 1728000, PLL_2,   3, 0,  192000, 1400, VDD_RAW(1400) },
 	{ 1824000, PLL_2,   3, 0,  192000, 1450, VDD_RAW(1450) },
+        { 1920000, PLL_2,   3, 0,  192000, 1500, VDD_RAW(1500) },
 	{ 0 }
 };
 static unsigned long max_axi_rate;
@@ -157,47 +177,14 @@ unsigned long acpuclk_wait_for_irq(void)
 	return ret;
 }
 
-#ifdef CONFIG_HTC_SMEM_MSMC1C2_DEBUG
-/* mARM */
-#define HTC_SMEM_MSMC1		(MSM_SHARED_RAM_BASE + 0x000F8000)
-#define HTC_SMEM_AXI_SPEED	(MSM_SHARED_RAM_BASE + 0x000F8004)
-/* aARM */
-#define HTC_SMEM_MSMC2_STAT	(MSM_SHARED_RAM_BASE + 0x000F8100)
-#define HTC_SMEM_MSMC2_LAST	(MSM_SHARED_RAM_BASE + 0x000F8104)
-#define HTC_SMEM_MSMC2_CURR	(MSM_SHARED_RAM_BASE + 0x000F8108)
-#define HTC_SMEM_MSMC2_MSMC1	(MSM_SHARED_RAM_BASE + 0x000F810C)
-#define HTC_SMEM_MSMC2_AXI	(MSM_SHARED_RAM_BASE + 0x000F8110)
-#endif
 
 static int acpuclk_set_acpu_vdd(struct clkctl_acpu_speed *s)
+
 {
-#ifdef CONFIG_HTC_SMEM_MSMC1C2_DEBUG
-	unsigned int smem_val;
-	int ret;
 
-	/* store current MSMC1 and AXI */
-	smem_val = readl(HTC_SMEM_MSMC1);
-	writel(smem_val, HTC_SMEM_MSMC2_MSMC1);
-	smem_val = readl(HTC_SMEM_AXI_SPEED);
-	writel(smem_val, HTC_SMEM_MSMC2_AXI);
-
-	/* store last and current(target) MSMC2 */
-	smem_val = readl(HTC_SMEM_MSMC2_CURR);
-	if (smem_val)
-		writel(smem_val, HTC_SMEM_MSMC2_LAST);
-	writel(s->vdd_mv, HTC_SMEM_MSMC2_CURR);
-
-	writel(0x11112222, HTC_SMEM_MSMC2_STAT);
-	ret = msm_spm_set_vdd(s->vdd_raw);
-	if (ret)
-		return ret;
-	/* HTC_SMEM_MSMC2_CURR is valid only when STAT:0x33334444 */
-	writel(0x33334444, HTC_SMEM_MSMC2_STAT);
-#else
 	int ret = msm_spm_set_vdd(0, s->vdd_raw);
 	if (ret)
 		return ret;
-#endif
 
 	/* Wait for voltage to stabilize. */
 	udelay(drv_state.vdd_switch_time_us);
@@ -385,12 +372,12 @@ static unsigned int acpuclk_get_current_vdd(void)
 	unsigned int vdd_mv;
 
 	vdd_raw = msm_spm_get_vdd();
-	for (vdd_mv = 850; vdd_mv <= 1300; vdd_mv += 25)
+	for (vdd_mv = VOLTAGE_MIN; vdd_mv <= VOLTAGE_MAX; vdd_mv += V_STEP)
 
 		if (VDD_RAW(vdd_mv) == vdd_raw)
 			break;
 
-	if (vdd_mv > 1350)
+	if (vdd_mv > VOLTAGE_MAX)
 		return 0;
 
 	return vdd_mv;
@@ -409,7 +396,7 @@ static int acpuclk_update_freq_tbl(unsigned int acpu_khz, unsigned int acpu_vdd)
 		pr_err("%s: acpuclk invalid speed %d\n", __func__, acpu_khz);
 		return -1;
 	}
-	if (acpu_vdd > 1300 || acpu_vdd < 850) {
+	if (acpu_vdd > VOLTAGE_MAX || acpu_vdd < VOLTAGE_MIN) {
 		pr_err("%s: acpuclk vdd out of ranage, %d\n",
 			__func__, acpu_vdd);
 		return -2;
@@ -541,3 +528,35 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	register_acpuclock_debug_dev(&acpu_debug_7x30);
 }
 
+#ifdef CONFIG_VDD_USERSPACE
+ssize_t acpuclk_get_vdd_levels_str(char *buf)
+{
+    int i, len = 0;
+    if (buf) {
+       mutex_lock(&drv_state.lock);
+       for (i = 0; acpu_freq_tbl[i].acpu_clk_khz; i++) {
+          len += sprintf(buf + len, "%8u: %4d\n", acpu_freq_tbl[i].acpu_clk_khz, acpu_freq_tbl[i].vdd_mv);
+       }
+       mutex_unlock(&drv_state.lock);
+    }
+    return len;
+}
+
+void acpuclk_set_vdd(unsigned int khz, int vdd)
+{
+    int i;
+    vdd = vdd / V_STEP * V_STEP;
+    mutex_lock(&drv_state.lock);
+    for (i = 0; acpu_freq_tbl[i].acpu_clk_khz; i++) {
+        if (khz == 0) {
+           acpu_freq_tbl[i].vdd_mv = min(max((acpu_freq_tbl[i].vdd_mv + vdd), VOLTAGE_MIN), VOLTAGE_MAX);
+           acpu_freq_tbl[i].vdd_raw = VDD_RAW(acpu_freq_tbl[i].vdd_mv);
+        }
+        else if (acpu_freq_tbl[i].acpu_clk_khz == khz) {
+                 acpu_freq_tbl[i].vdd_mv = min(max((unsigned int)vdd, VOLTAGE_MIN), VOLTAGE_MAX);
+                 acpu_freq_tbl[i].vdd_raw = VDD_RAW(acpu_freq_tbl[i].vdd_mv);
+	}
+    }
+    mutex_unlock(&drv_state.lock);
+}
+#endif
